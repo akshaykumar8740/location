@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apni location share karein</title>
+</head>
+<body>
+  <h1>Apni location</h1>
+  <button id="start">Location share karein</button>
+  <button id="stop" disabled>Band karein</button>
+  <p id="status">Location abhi share nahi ho rahi.</p>
+  <p id="coordinates"></p>
+  <a id="map" target="_blank" rel="noopener"></a>
+
+  <script>
+    const statusText = document.querySelector("#status");
+    const coordinates = document.querySelector("#coordinates");
+    const mapLink = document.querySelector("#map");
+    let watchId = null;
+
+    document.querySelector("#start").addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        statusText.textContent = "Is browser mein location feature available nahi hai.";
+        return;
+      }
+
+      statusText.textContent = "Permission ka intezar hai…";
+
+      watchId = navigator.geolocation.watchPosition(
+        ({ coords }) => {
+          const { latitude, longitude, accuracy } = coords;
+          coordinates.textContent =
+            `Latitude: ${latitude.toFixed(6)}, Longitude: ${longitude.toFixed(6)} (lagbhag ${Math.round(accuracy)} m accuracy)`;
+
+          mapLink.href = `https://www.google.com/maps?q=${latitude},${longitude}`;
+          mapLink.textContent = "Map par dekhein";
+          statusText.textContent = "Aapki location update ho rahi hai.";
+
+          document.querySelector("#start").disabled = true;
+          document.querySelector("#stop").disabled = false;
+        },
+        (error) => {
+          statusText.textContent = `Location nahi mil saki: ${error.message}`;
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
+    });
+
+    document.querySelector("#stop").addEventListener("click", () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      statusText.textContent = "Location sharing band kar di gayi.";
+      document.querySelector("#start").disabled = false;
+      document.querySelector("#stop").disabled = true;
+    });
+  </script>
+</body>
+</html>
