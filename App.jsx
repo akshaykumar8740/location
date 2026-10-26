@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 const suggestions = [
   { icon: "✦", title: "Learn something new", text: "Explain a difficult topic in simple words." },
@@ -14,6 +19,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState("");
+  const [user, setUser] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
   const textareaRef = useRef(null);
   const bottomRef = useRef(null);
   const activeChat = chats.find((chat) => chat.id === activeId);
@@ -21,6 +33,59 @@ export default function App() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
   useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    setAuthMessage("");
+    if (!supabase) {
+      setAuthMessage("Login setup pending: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Render Environment, then redeploy.");
+      return;
+    }
+    if (!authEmail.trim() || !authPassword) {
+      setAuthMessage("Email aur password dono bharo.");
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      if (authMode === "signup") {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: authEmail.trim(),
+          password: authPassword,
+        });
+        if (authError) throw authError;
+        setAuthMessage(data.session
+          ? "Account ban gaya! You are now logged in."
+          : "Account request sent. Email confirmation aaye to inbox check karo.");
+      } else {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: authEmail.trim(),
+          password: authPassword,
+        });
+        if (authError) throw authError;
+        setAuthMessage("Login successful.");
+        setAuthOpen(false);
+      }
+    } catch (authError) {
+      setAuthMessage(authError.message || "Login nahi ho paya. Details check karke try karo.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function logOut() {
+    if (supabase) await supabase.auth.signOut();
+    setUser(null);
+    setAuthMessage("You are logged out.");
+  }
 
   function newChat() {
     setActiveId(null);
@@ -100,7 +165,7 @@ export default function App() {
             <button className="icon-button menu-button" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">☰</button>
             <div className="model-selector"><span className="model-spark">✦</span><strong>Akshay AI</strong><span className="model-tag">ASSISTANT</span><span className="chevron">⌄</span></div>
           </div>
-          <div className="topbar-right"><div className="online-indicator"><span /> Ready to chat</div></div>
+          <div className="topbar-right"><div className="online-indicator"><span /> Ready to chat</div>{user ? <button className="login-button logged-in" onClick={logOut} title={user.email || "Account"}><span className="login-avatar">{(user.email || "A").slice(0, 1).toUpperCase()}</span> Log out</button> : <button className="login-button" onClick={() => { setAuthMode("login"); setAuthMessage(""); setAuthOpen(true); }}>Log in <span>↗</span></button>}</div>
         </header>
 
         <section className="chat-area">
@@ -138,6 +203,26 @@ export default function App() {
           <p className="disclaimer">Akshay AI can make mistakes. Verify important information. Your messages are sent to the configured AI service.</p>
         </section>
       </main>
+      {authOpen && <div className="auth-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}>
+        <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+          <button className="auth-close" onClick={() => setAuthOpen(false)} aria-label="Close login">×</button>
+          <div className="auth-brand-mark">A<span>✦</span></div>
+          <p className="auth-eyebrow">WELCOME TO AKSHAY AI</p>
+          <h2 id="auth-title">{authMode === "login" ? "Welcome back" : "Create your account"}</h2>
+          <p className="auth-subtitle">{authMode === "login" ? "Log in to your personal AI workspace." : "Sign up to get started with Akshay AI."}</p>
+          <form className="auth-form" onSubmit={submitAuth}>
+            <label htmlFor="auth-email">Email address</label>
+            <input id="auth-email" type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" required />
+            <label htmlFor="auth-password">Password</label>
+            <input id="auth-password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={6} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 6 characters" required />
+            {authMessage && <p className="auth-message" role="status">{authMessage}</p>}
+            <button className="auth-submit" type="submit" disabled={authBusy}>{authBusy ? "Please wait…" : authMode === "login" ? "Log in" : "Create account"}</button>
+          </form>
+          <p className="auth-switch">{authMode === "login" ? "New to Akshay AI?" : "Already have an account?"} <button onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthMessage(""); }}>{authMode === "login" ? "Sign up" : "Log in"}</button></p>
+          {!supabase && <p className="auth-setup-note">Login UI is ready. Connect Supabase in Render to enable real accounts.</p>}
+          <p className="auth-privacy">Your password is handled by the authentication provider, not stored by Akshay AI.</p>
+        </section>
+      </div>}
     </div>
   );
 }
