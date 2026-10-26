@@ -1,65 +1,65 @@
-
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
 
 const app = express();
+const port = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
-app.get("/", (req, res) => {
-  res.send("Akshay AI Backend is running!");
+app.get("/", (_req, res) => {
+  res.status(200).send("Akshay AI Backend is running!");
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, service: "akshay-ai-backend" });
 });
 
 app.post("/api/chat", async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: "OPENAI_API_KEY is missing in Render Environment." });
+  }
+
+  let messages = req.body?.messages;
+  if (!Array.isArray(messages) && typeof req.body?.message === "string") {
+    messages = [{ role: "user", content: req.body.message }];
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "Please send a message." });
+  }
+
+  if (messages.length > 40 || messages.some((m) =>
+    !m || !["user", "assistant"].includes(m.role) ||
+    typeof m.content !== "string" || m.content.length > 12000
+  )) {
+    return res.status(400).json({ error: "Invalid messages or conversation too long." });
+  }
+
   try {
-    const { message } = req.body;
-
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({
-        error: "Please enter a message."
-      });
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({
-        error: "AI API key is missing on the server."
-      });
-    }
-
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const openai = new OpenAI({ apiKey });
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "You are Akshay AI, a helpful AI assistant. Reply clearly and politely."
+          content: "You are Akshay AI, a helpful, clear, friendly assistant. Answer in the language used by the user when practical."
         },
-        {
-          role: "user",
-          content: message.trim()
-        }
+        ...messages.map(({ role, content }) => ({ role, content }))
       ]
     });
 
-    res.json({
-      reply: response.choices[0].message.content
+    return res.json({
+      reply: completion.choices[0]?.message?.content || "I couldn't generate a response. Please try again."
     });
   } catch (error) {
-    console.error("AI error:", error.message);
-
-    res.status(500).json({
-      error: "AI response failed. Check the server logs and API settings."
-    });
+    console.error("AI request failed:", error?.status || error?.message || "unknown error");
+    return res.status(502).json({ error: "AI request failed. Check Render logs and API billing/key settings." });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Akshay AI backend running on port ${PORT}`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Akshay AI backend listening on port ${port}`);
 });
