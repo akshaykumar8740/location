@@ -931,3 +931,47 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Responsive navigation and connection errors */
+.menu-button {
+  display: none;
+}
+.mobile-backdrop {
+  display: none;
+}
+.error-note {
+  width: min(780px, 100%);
+  margin: 0 auto 8px;
+  padding: 10px 12px;
+  border: 1px solid #ff9eae55;
+  border-radius: 9px;
+  background: #ff80900d;
+  color: #ffc1cb;
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 640px) {
+  .menu-button {
+    display: grid;
+  }
+  .sidebar {
+    transform: translateX(-110%);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s;
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #0009;
+  }
+}
