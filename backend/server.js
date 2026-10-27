@@ -55,8 +55,21 @@ app.post("/api/chat", async (req, res) => {
       reply: completion.choices[0]?.message?.content || "I couldn't generate a response. Please try again."
     });
   } catch (error) {
-    console.error("AI request failed:", error?.status || error?.message || "unknown error");
-    return res.status(502).json({ error: "AI request failed. Check Render logs and API billing/key settings." });
+    const status = error?.status;
+    const code = error?.code || error?.error?.code;
+    console.error("AI request failed:", status || error?.message || "unknown error", code || "");
+
+    if (status === 429) {
+      return res.status(429).json({
+        error: "OpenAI API returned 429: quota or rate limit reached. Check API billing, available credits, and usage limits."
+      });
+    }
+    if (status === 401) {
+      return res.status(401).json({
+        error: "OpenAI API key was rejected (401). Check that OPENAI_API_KEY is the correct active API key in Render."
+      });
+    }
+    return res.status(502).json({ error: "AI provider request failed. Check Render logs and OpenAI API settings." });
   }
 });
 
