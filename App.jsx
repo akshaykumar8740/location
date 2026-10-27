@@ -121,8 +121,9 @@ export default function App() {
       const assistantMessage = { role: "assistant", content: answer };
       setChats((old) => old.map((chat) => chat.id === id ? { ...chat, messages: [...nextMessages, assistantMessage] } : chat));
     } catch (err) {
-      setError(err.message || "Connection error. Server ko check karo.");
-      setChats((old) => old.map((chat) => chat.id === id ? { ...chat, messages: [...nextMessages, { role: "assistant", content: "Main AI server se connect nahi ho paaya. Render par OPENAI_API_KEY environment variable set karo aur server logs check karo, phir dobara try karo." }] } : chat));
+      const message = err.message || "Connection error. Server ko check karo.";
+      setError(message);
+      setChats((old) => old.map((chat) => chat.id === id ? { ...chat, messages: [...nextMessages, { role: "assistant", content: message }] } : chat));
     } finally {
       setBusy(false);
       textareaRef.current?.focus();
