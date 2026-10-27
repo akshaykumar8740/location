@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,13 +13,13 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "akshay-ai-backend" });
+  res.json({ ok: true, service: "akshay-ai-backend", provider: "gemini" });
 });
 
 app.post("/api/chat", async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(503).json({ error: "OPENAI_API_KEY is missing in Render Environment." });
+    return res.status(503).json({ error: "GEMINI_API_KEY is missing in Render Environment." });
   }
 
   let messages = req.body?.messages;
@@ -39,40 +39,39 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
-    const openai = new OpenAI({ apiKey });
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are Akshay AI, a helpful, clear, friendly assistant. Answer in the language used by the user when practical."
-        },
-        ...messages.map(({ role, content }) => ({ role, content }))
-      ]
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      systemInstruction: "You are Akshay AI, a helpful, clear, friendly assistant. Answer in the language used by the user when practical."
     });
 
-    return res.json({
-      reply: completion.choices[0]?.message?.content || "I couldn't generate a response. Please try again."
-    });
+    const history = messages.slice(0, -1).map(({ role, content }) => ({
+      role: role === "assistant" ? "model" : "user",
+      parts: [{ text: content }]
+    }));
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== "user") {
+      return res.status(400).json({ error: "The latest message must be from the user." });
+    }
+
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessage(lastMessage.content);
+    const reply = result.response.text();
+
+    return res.json({ reply: reply || "I couldn't generate a response. Please try again." });
   } catch (error) {
-    const status = error?.status;
-    const code = error?.code || error?.error?.code;
-    console.error("AI request failed:", status || error?.message || "unknown error", code || "");
-
+    const status = error?.status || error?.statusCode;
+    console.error("Gemini request failed:", status || error?.message || "unknown error");
     if (status === 429) {
-      return res.status(429).json({
-        error: "OpenAI API returned 429: quota or rate limit reached. Check API billing, available credits, and usage limits."
-      });
+      return res.status(429).json({ error: "Gemini free-tier limit reached for now. Check your AI Studio quota or try again later." });
     }
-    if (status === 401) {
-      return res.status(401).json({
-        error: "OpenAI API key was rejected (401). Check that OPENAI_API_KEY is the correct active API key in Render."
-      });
+    if (status === 401 || status === 403) {
+      return res.status(status).json({ error: "Gemini API key or project access was rejected. Check the active API key and free-tier availability in Google AI Studio." });
     }
-    return res.status(502).json({ error: "AI provider request failed. Check Render logs and OpenAI API settings." });
+    return res.status(502).json({ error: "Gemini AI request failed. Check the API key, selected model, and Render logs." });
   }
 });
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Akshay AI backend listening on port ${port}`);
+  console.log(`Akshay AI Gemini backend listening on port ${port}`);
 });
